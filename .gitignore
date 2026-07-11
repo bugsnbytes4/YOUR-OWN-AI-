@@ -69,3 +69,15 @@ Thumbs.db
 # Secrets
 .env
 secrets.yml
+
+# Blockchain & token secrets
+*.evm
+keystore/
+*.key
+*.pem
+*.seed
+*.mnemonic
+*.secret
+*.token
+*.private
+wallet.dat
