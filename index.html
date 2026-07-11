@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VectorDB — HNSW / KD-Tree / Brute Force</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e14;
+    --panel:#10151f;
+    --panel-2:#151b28;
+    --border:#242c3d;
+    --text:#dbe2f0;
+    --dim:#7a869e;
+    --cs:#5eead4;
+    --math:#f0b429;
+    --food:#fb7185;
+    --sports:#818cf8;
+    --accent:#5eead4;
+    --accent-2:#8b5cf6;
+    --mono:'IBM Plex Mono', monospace;
+    --display:'Space Grotesk', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--mono); font-size:14px;
+    background-image:
+      linear-gradient(rgba(94,234,212,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(94,234,212,0.03) 1px, transparent 1px);
+    background-size:28px 28px;
+  }
+  header{
+    padding:22px 28px; border-bottom:1px solid var(--border);
+    display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:10px;
+  }
+  header h1{
+    font-family:var(--display); font-size:20px; margin:0; letter-spacing:-0.02em; font-weight:700;
+    color:#fff;
+  }
+  header h1 span{color:var(--accent);}
+  #status-line{color:var(--dim); font-size:12px;}
+  #status-dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; background:#555;}
+  #status-dot.on{background:#4ade80; box-shadow:0 0 6px #4ade80;}
+  #status-dot.off{background:#f87171;}
+  main{max-width:1180px; margin:0 auto; padding:24px 28px 60px;}
+  .tabs{display:flex; gap:2px; margin-bottom:20px; border-bottom:1px solid var(--border);}
+  .tab{
+    padding:10px 18px; cursor:pointer; color:var(--dim); font-size:13px;
+    border-bottom:2px solid transparent; user-select:none;
+  }
+  .tab.active{color:#fff; border-bottom-color:var(--accent);}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px;}
+  .card h2{font-family:var(--display); font-size:14px; margin:0 0 14px; color:#fff; text-transform:uppercase; letter-spacing:.05em;}
+  label{display:block; font-size:11px; color:var(--dim); margin-bottom:5px; text-transform:uppercase; letter-spacing:.04em;}
+  input, select, textarea{
+    width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+    padding:9px 10px; border-radius:6px; font-family:var(--mono); font-size:13px; margin-bottom:12px;
+  }
+  textarea{resize:vertical; min-height:110px;}
+  .row{display:flex; gap:10px;}
+  .row > div{flex:1;}
+  button{
+    background:var(--accent); color:#04211c; border:none; padding:10px 16px; border-radius:6px;
+    font-family:var(--mono); font-weight:600; font-size:13px; cursor:pointer; letter-spacing:.02em;
+  }
+  button:hover{filter:brightness(1.08);}
+  button.secondary{background:transparent; border:1px solid var(--border); color:var(--text);}
+  button:disabled{opacity:.5; cursor:not-allowed;}
+  #scatter{width:100%; height:320px; background:var(--panel-2); border-radius:8px; border:1px solid var(--border);}
+  .legend{display:flex; gap:14px; margin-top:10px; flex-wrap:wrap; font-size:11px; color:var(--dim);}
+  .legend span{display:inline-flex; align-items:center; gap:5px;}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .result{
+    display:flex; justify-content:space-between; align-items:center; padding:9px 10px;
+    border-bottom:1px solid var(--border); font-size:13px;
+  }
+  .result:last-child{border-bottom:none;}
+  .result .lab{font-weight:600;}
+  .result .cat{color:var(--dim); font-size:11px; margin-left:6px;}
+  .result .dist{color:var(--accent); font-variant-numeric:tabular-nums;}
+  .bench-row{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+  .bench-row .name{width:90px; font-size:12px; color:var(--dim);}
+  .bench-bar-track{flex:1; background:var(--panel-2); border-radius:4px; overflow:hidden; height:16px;}
+  .bench-bar{height:100%; background:linear-gradient(90deg, var(--accent), var(--accent-2));}
+  .bench-row .ms{width:70px; text-align:right; font-size:12px; color:var(--dim);}
+  #doc-list .result{cursor:default;}
+  .chip{
+    display:inline-block; background:var(--panel-2); border:1px solid var(--border); color:var(--dim);
+    padding:4px 9px; border-radius:14px; font-size:11px; margin:3px 4px 0 0; cursor:pointer;
+  }
+  .chip:hover{border-color:var(--accent); color:var(--accent);}
+  #answer{
+    white-space:pre-wrap; line-height:1.55; background:var(--panel-2); border-radius:8px; padding:14px;
+    border:1px solid var(--border); min-height:60px; font-size:13px;
+  }
+  #chunk-detail{margin-top:10px; font-size:12px; color:var(--dim); display:none; background:var(--panel-2); padding:10px; border-radius:6px; border:1px solid var(--border);}
+  .muted{color:var(--dim); font-size:12px;}
+  .hnsw-stats{display:flex; gap:20px; flex-wrap:wrap;}
+  .hnsw-stats div{background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:12px 16px; flex:1; min-width:120px;}
+  .hnsw-stats .num{font-family:var(--display); font-size:22px; color:var(--accent); font-weight:700;}
+  .hnsw-stats .lab{font-size:11px; color:var(--dim); text-transform:uppercase; margin-top:2px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Vector<span>DB</span> <span style="font-size:12px; color:var(--dim); font-weight:400;">— HNSW · KD-Tree · Brute Force</span></h1>
+  <div id="status-line"><span id="status-dot"></span><span id="status-text">checking ollama…</span></div>
+</header>
+
+<main>
+  <div class="tabs">
+    <div class="tab active" data-tab="search">Search (Demo Vectors)</div>
+    <div class="tab" data-tab="docs">Documents</div>
+    <div class="tab" data-tab="ask">Ask AI (RAG)</div>
+  </div>
+
+  <!-- TAB 1: SEARCH -->
+  <div class="panel active" id="panel-search">
+    <div class="grid">
+      <div class="card">
+        <h2>Query</h2>
+        <label>Concept</label>
+        <input id="q-concept" placeholder="binary tree, sushi, basketball, calculus…" />
+        <div class="row">
+          <div>
+            <label>Algorithm</label>
+            <select id="q-algo">
+              <option value="hnsw">HNSW</option>
+              <option value="kdtree">KD-Tree</option>
+              <option value="bruteforce">Brute Force</option>
+            </select>
+          </div>
+          <div>
+            <label>Metric</label>
+            <select id="q-metric">
+              <option value="cosine">Cosine</option>
+              <option value="euclidean">Euclidean</option>
+              <option value="manhattan">Manhattan</option>
+            </select>
+          </div>
+          <div>
+            <label>K</label>
+            <input id="q-k" type="number" value="5" min="1" max="20" />
+          </div>
+        </div>
+        <div class="row">
+          <button onclick="doSearch()">⚡ Search</button>
+          <button class="secondary" onclick="doBenchmark()">▶ Compare All Algos</button>
+        </div>
+        <div id="results" style="margin-top:14px;"></div>
+        <div id="bench" style="margin-top:14px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Semantic Space (PCA, 2D)</h2>
+        <svg id="scatter" viewBox="0 0 400 320"></svg>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--cs)"></i>CS</span>
+          <span><i class="dot" style="background:var(--math)"></i>Math</span>
+          <span><i class="dot" style="background:var(--food)"></i>Food</span>
+          <span><i class="dot" style="background:var(--sports)"></i>Sports</span>
+        </div>
+        <p class="muted" style="margin-top:10px;">Each point is one of the 20 demo vectors, projected from 16D to 2D. Matching results glow when you search.</p>
+        <h2 style="margin-top:18px;">HNSW Graph Stats</h2>
+        <div class="hnsw-stats" id="hnsw-stats"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: DOCUMENTS -->
+  <div class="panel" id="panel-docs">
+    <div class="grid">
+      <div class="card">
+        <h2>Embed a Document</h2>
+        <p class="muted" style="margin-top:-8px;">Uses Ollama (<code>nomic-embed-text</code>) to generate real 768-dimensional embeddings. Long text is auto-chunked into overlapping 250-word pieces.</p>
+        <label>Title</label>
+        <input id="doc-title" placeholder="Operating Systems Notes" />
+        <label>Text</label>
+        <textarea id="doc-text" placeholder="Paste lecture notes, textbook paragraphs, articles…"></textarea>
+        <button onclick="doEmbed()" id="embed-btn">⚡ Embed &amp; Insert</button>
+        <p id="doc-msg" class="muted" style="margin-top:8px;"></p>
+      </div>
+      <div class="card">
+        <h2>Stored Chunks</h2>
+        <div id="doc-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: ASK AI -->
+  <div class="panel" id="panel-ask">
+    <div class="card" style="max-width:760px; margin:0 auto;">
+      <h2>Ask a Question About Your Documents</h2>
+      <p class="muted" style="margin-top:-8px;">Retrieval-augmented generation: HNSW finds the 3 most relevant chunks, then <code>llama3.2</code> answers using only that context.</p>
+      <input id="ask-q" placeholder="What is dynamic programming?" />
+      <button onclick="doAsk()" id="ask-btn">🤖 Ask AI</button>
+      <h2 style="margin-top:20px;">Answer</h2>
+      <div id="answer">Ask something above once you've embedded a document.</div>
+      <div id="context-chips"></div>
+      <div id="chunk-detail"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const CAT_COLOR = {CS:'var(--cs)', Math:'var(--math)', Food:'var(--food)', Sports:'var(--sports)'};
+const CAT_COLOR_HEX = {CS:'#5eead4', Math:'#f0b429', Food:'#fb7185', Sports:'#818cf8'};
+let itemsCache = [];
+
+// ---------- Tabs ----------
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+  });
+});
+
+// ---------- Status ----------
+async function refreshStatus(){
+  try{
+    const r = await fetch('/status');
+    const s = await r.json();
+    const dot = document.getElementById('status-dot');
+    const txt = document.getElementById('status-text');
+    if(s.ollama_online){
+      dot.className='on'; txt.textContent = `ollama online · ${s.embed_model} / ${s.gen_model}`;
+    } else {
+      dot.className='off'; txt.textContent = 'ollama offline — run `ollama serve`';
+    }
+  }catch(e){
+    document.getElementById('status-text').textContent = 'server unreachable';
+  }
+}
+
+// ---------- Scatter plot ----------
+async function loadItems(){
+  const r = await fetch('/items');
+  itemsCache = await r.json();
+  drawScatter();
+}
+function drawScatter(highlightIds){
+  const svg = document.getElementById('scatter');
+  const W=400,H=320,pad=30;
+  const xs = itemsCache.map(i=>i.x), ys = itemsCache.map(i=>i.y);
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const sx = v => pad + (v-minX)/(maxX-minX||1) * (W-2*pad);
+  const sy = v => H-pad - (v-minY)/(maxY-minY||1) * (H-2*pad);
+  let html = '';
+  itemsCache.forEach(it=>{
+    const hl = highlightIds && highlightIds.includes(it.id);
+    const color = CAT_COLOR_HEX[it.category] || '#888';
+    html += `<circle cx="${sx(it.x).toFixed(1)}" cy="${sy(it.y).toFixed(1)}" r="${hl?7:4.5}"
+      fill="${color}" fill-opacity="${hl?1:0.75}" stroke="${hl?'#fff':'none'}" stroke-width="${hl?2:0}">
+      <title>${it.label} (${it.category})</title></circle>`;
+  });
+  svg.innerHTML = html;
+}
+
+// ---------- HNSW stats ----------
+async function loadHnswInfo(){
+  const r = await fetch('/hnsw-info');
+  const info = await r.json();
+  document.getElementById('hnsw-stats').innerHTML = `
+    <div><div class="num">${info.num_nodes}</div><div class="lab">Nodes</div></div>
+    <div><div class="num">${info.max_level}</div><div class="lab">Max Layer</div></div>
+    <div><div class="num">${info.M}</div><div class="lab">M (edges)</div></div>
+  `;
+}
+
+// ---------- Search ----------
+async function doSearch(){
+  const concept = document.getElementById('q-concept').value.trim();
+  if(!concept){ alert('Type a concept, e.g. "binary tree"'); return; }
+  const algo = document.getElementById('q-algo').value;
+  const metric = document.getElementById('q-metric').value;
+  const k = document.getElementById('q-k').value;
+  const params = new URLSearchParams({q_label: concept, k, metric, algo});
+  const r = await fetch('/search_by_label?' + params.toString());
+  if(!r.ok){
+    document.getElementById('results').innerHTML = `<p class="muted">No demo item matches "${concept}". Try one of: binary tree, sushi, basketball, calculus…</p>`;
+    return;
+  }
+  const data = await r.json();
+  renderResults(data.results, data.time_ms);
+  drawScatter(data.results.map(x=>x.id));
+}
+function renderResults(results, ms){
+  let html = results.map(r => `
+    <div class="result">
+      <div><span class="lab">${r.label}</span><span class="cat">${r.category}</span></div>
+      <div class="dist">${r.distance.toFixed(4)}</div>
+    </div>`).join('');
+  html += `<p class="muted" style="margin-top:8px;">${results.length} results in ${ms.toFixed(3)} ms</p>`;
+  document.getElementById('results').innerHTML = html;
+}
+
+async function doBenchmark(){
+  const concept = document.getElementById('q-concept').value.trim();
+  if(!concept){ alert('Type a concept, e.g. "binary tree"'); return; }
+  const metric = document.getElementById('q-metric').value;
+  const k = document.getElementById('q-k').value;
+  const params = new URLSearchParams({q_label: concept, k, metric});
+  const r = await fetch('/benchmark_by_label?' + params.toString());
+  if(!r.ok){ document.getElementById('bench').innerHTML = `<p class="muted">No demo item matches "${concept}".</p>`; return; }
+  const data = await r.json();
+  const maxMs = Math.max(...Object.values(data).map(v=>v.time_ms), 0.001);
+  let html = '<h2 style="margin-top:14px;">Benchmark</h2>';
+  for(const algo of ['bruteforce','kdtree','hnsw']){
+    const v = data[algo];
+    const pct = (v.time_ms/maxMs*100).toFixed(1);
+    html += `<div class="bench-row">
+      <div class="name">${algo}</div>
+      <div class="bench-bar-track"><div class="bench-bar" style="width:${pct}%"></div></div>
+      <div class="ms">${v.time_ms.toFixed(3)} ms</div>
+    </div>`;
+  }
+  document.getElementById('bench').innerHTML = html;
+}
+
+// ---------- Documents ----------
+async function doEmbed(){
+  const title = document.getElementById('doc-title').value.trim() || 'untitled';
+  const text = document.getElementById('doc-text').value.trim();
+  if(!text){ alert('Paste some text first'); return; }
+  const btn = document.getElementById('embed-btn');
+  btn.disabled = true; btn.textContent = 'Embedding…';
+  document.getElementById('doc-msg').textContent = '';
+  try{
+    const r = await fetch('/doc/insert', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({title, text})});
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'failed');
+    document.getElementById('doc-msg').textContent = `Inserted ${data.num_chunks} chunk(s).`;
+    document.getElementById('doc-text').value = '';
+    loadDocList();
+  }catch(e){
+    document.getElementById('doc-msg').textContent = 'Error: ' + e.message + ' (is Ollama running?)';
+  }finally{
+    btn.disabled = false; btn.textContent = '⚡ Embed & Insert';
+  }
+}
+async function loadDocList(){
+  const r = await fetch('/doc/list');
+  const docs = await r.json();
+  if(docs.length === 0){
+    document.getElementById('doc-list').innerHTML = '<p class="muted">No documents yet. Embed one on the left.</p>';
+    return;
+  }
+  document.getElementById('doc-list').innerHTML = docs.map(d => `
+    <div class="result">
+      <div><span class="lab">${d.title}</span><span class="cat">${d.text.split(' ').length} words</span></div>
+      <button class="secondary" style="padding:4px 8px; font-size:11px;" onclick="deleteChunk('${d.id}')">delete</button>
+    </div>`).join('');
+}
+async function deleteChunk(id){
+  await fetch('/doc/delete/' + id, {method:'DELETE'});
+  loadDocList();
+}
+
+// ---------- Ask AI ----------
+async function doAsk(){
+  const question = document.getElementById('ask-q').value.trim();
+  if(!question){ return; }
+  const btn = document.getElementById('ask-btn');
+  btn.disabled = true; btn.textContent = 'Thinking…';
+  document.getElementById('answer').textContent = '…';
+  document.getElementById('context-chips').innerHTML = '';
+  document.getElementById('chunk-detail').style.display = 'none';
+  try{
+    const r = await fetch('/doc/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({question, k:3})});
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'failed');
+    document.getElementById('answer').textContent = data.answer;
+    document.getElementById('context-chips').innerHTML = data.context.map((c,i)=>
+      `<span class="chip" onclick="showChunk(${i})">${c.title} · chunk ${i+1}</span>`).join('');
+    window._lastContext = data.context;
+  }catch(e){
+    document.getElementById('answer').textContent = 'Error: ' + e.message + ' (is Ollama running with llama3.2 pulled?)';
+  }finally{
+    btn.disabled = false; btn.textContent = '🤖 Ask AI';
+  }
+}
+function showChunk(i){
+  const c = window._lastContext[i];
+  const el = document.getElementById('chunk-detail');
+  el.style.display = 'block';
+  el.textContent = `[distance ${c.distance.toFixed(4)}] ${c.text}`;
+}
+
+// ---------- Init ----------
+refreshStatus();
+loadItems();
+loadHnswInfo();
+loadDocList();
+setInterval(refreshStatus, 15000);
+</script>
+</body>
+</html>
